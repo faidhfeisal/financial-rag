@@ -1,0 +1,49 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv
+.env
+*.egg-info
+
+# Node
+node_modules
+npm-debug.log
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+tests
+coverage
+
+# Build
+dist
+build
+*.egg-info
+
+# Logs
+logs
+*.log
+
+# Data
+data
+vectors
+
+# Documentation
+docs
+*.md
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
