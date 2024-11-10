@@ -11,6 +11,10 @@ from qdrant_client.http.models import (
 )
 from datetime import datetime
 from ..core.config import get_settings
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -25,17 +29,23 @@ class VectorStore:
 
     def _ensure_collection(self):
         """Ensure collection exists with proper configuration"""
-        collections = self.client.get_collections()
-        collection_names = [c.name for c in collections.collections]
-        
-        if self.settings.COLLECTION_NAME not in collection_names:
-            self.client.create_collection(
-                collection_name=self.settings.COLLECTION_NAME,
-                vectors_config=VectorParams(
-                    size=self.settings.VECTOR_SIZE,
-                    distance=Distance.COSINE
+        try:
+            collections = self.client.get_collections()
+            collection_names = [c.name for c in collections.collections]
+            
+            if self.settings.COLLECTION_NAME not in collection_names:
+                logger.info(f"Creating collection: {self.settings.COLLECTION_NAME}")
+                self.client.create_collection(
+                    collection_name=self.settings.COLLECTION_NAME,
+                    vectors_config=VectorParams(
+                        size=self.settings.VECTOR_SIZE,
+                        distance=Distance.COSINE
+                    )
                 )
-            )
+                logger.info("Collection created successfully")
+        except Exception as e:
+            logger.error(f"Error ensuring collection exists: {str(e)}")
+            raise
 
     async def store_embeddings(
         self,
@@ -45,26 +55,61 @@ class VectorStore:
         """Store document chunks with their embeddings"""
         try:
             points = []
+            
+            # Generate base UUID for document
+            base_uuid = uuid.uuid4()
+            
             for i, chunk in enumerate(chunks):
+                # Create a deterministic UUID for each chunk based on document ID and chunk index
+                chunk_uuid = uuid.uuid5(base_uuid, f"{metadata['document_id']}_{i}")
+                
+                # Clean metadata by converting all values to string format
+                clean_metadata = {
+                    k: str(v) if not isinstance(v, (str, int, float, bool)) else v
+                    for k, v in metadata.items()
+                }
+
+                # Add chunk-specific metadata
+                chunk_metadata = {
+                    **clean_metadata,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "content_length": len(chunk["content"]),
+                    "embedding_timestamp": datetime.utcnow().isoformat()
+                }
+
                 point = PointStruct(
-                    id=f"{metadata['document_id']}_{i}",
+                    id=str(chunk_uuid),  # Convert UUID to string
                     vector=chunk["embedding"],
                     payload={
                         "document_id": metadata["document_id"],
                         "content": chunk["content"],
-                        "metadata": metadata,
-                        "chunk_index": i
+                        "metadata": chunk_metadata
                     }
                 )
                 points.append(point)
 
-            self.client.upsert(
-                collection_name=self.settings.COLLECTION_NAME,
-                points=points
-            )
+            logger.info(f"Storing {len(points)} points in vector store")
+            
+            # Store points in batches to avoid memory issues
+            batch_size = 100
+            for i in range(0, len(points), batch_size):
+                batch = points[i:i + batch_size]
+                self.client.upsert(
+                    collection_name=self.settings.COLLECTION_NAME,
+                    points=batch,
+                    wait=True  # Ensure points are indexed before continuing
+                )
+                logger.info(f"Stored batch of {len(batch)} points")
+
             return True
+            
         except Exception as e:
-            raise Exception(f"Error storing embeddings: {str(e)}")
+            error_msg = f"Error storing embeddings: {str(e)}"
+            if hasattr(e, 'response'):
+                error_msg += f"\nRaw response content:\n{e.response.content}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
     async def search_similar(
         self,
@@ -98,7 +143,9 @@ class VectorStore:
                 "metadata": result.payload["metadata"],
                 "similarity": result.score
             } for result in results]
+            
         except Exception as e:
+            logger.error(f"Error searching vectors: {str(e)}")
             raise Exception(f"Error searching vectors: {str(e)}")
 
 
@@ -116,27 +163,20 @@ class VectorStore:
                 conditions = []
                 for key, value in filters.items():
                     if isinstance(value, list):
-                        # Handle array filters (like tags)
                         conditions.append(
                             FieldCondition(
                                 key=f"metadata.{key}",
-                                match=Match(
-                                    any=value
-                                )
+                                match=Match(any=value)
                             )
                         )
                     else:
                         conditions.append(
                             FieldCondition(
                                 key=f"metadata.{key}",
-                                match=Match(
-                                    value=value
-                                )
+                                match=Match(value=value)
                             )
                         )
-                filter_conditions = Filter(
-                    must=conditions
-                )
+                filter_conditions = Filter(must=conditions)
 
             # Get unique document IDs and their metadata
             search_result = self.client.scroll(
@@ -156,7 +196,8 @@ class VectorStore:
                     documents[doc_id] = {
                         "document_id": doc_id,
                         "metadata": point.payload["metadata"],
-                        "chunk_count": 1
+                        "chunk_count": 1,
+                        "last_updated": point.payload["metadata"].get("embedding_timestamp")
                     }
                 else:
                     documents[doc_id]["chunk_count"] += 1
@@ -169,6 +210,7 @@ class VectorStore:
             }
 
         except Exception as e:
+            logger.error(f"Error listing documents: {str(e)}")
             raise Exception(f"Error listing documents: {str(e)}")
 
     async def delete_document(self, document_id: str) -> bool:
@@ -197,16 +239,17 @@ class VectorStore:
         except Exception as e:
             raise Exception(f"Error deleting document: {str(e)}")
 
-    async def get_document_metadata(self, document_id: str) -> Optional[Dict[str, Any]]:
+    async def get_document_metadata(
+        self, 
+        document_id: str
+    ) -> Optional[Dict[str, Any]]:
         """Get metadata for a specific document"""
         try:
             filter_conditions = Filter(
                 must=[
                     FieldCondition(
                         key="document_id",
-                        match=Match(
-                            value=document_id
-                        )
+                        match=Match(value=document_id)
                     )
                 ]
             )
@@ -224,4 +267,5 @@ class VectorStore:
             return None
             
         except Exception as e:
+            logger.error(f"Error getting document metadata: {str(e)}")
             raise Exception(f"Error getting document metadata: {str(e)}")

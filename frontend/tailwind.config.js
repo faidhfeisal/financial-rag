@@ -1,10 +1,20 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
+    darkMode: ["class"],
     content: [
-      "./index.html",
-      "./src/**/*.{js,ts,jsx,tsx}",
+      './pages/**/*.{js,jsx}',
+      './components/**/*.{js,jsx}',
+      './app/**/*.{js,jsx}',
+      './src/**/*.{js,jsx}',
     ],
     theme: {
+      container: {
+        center: true,
+        padding: "2rem",
+        screens: {
+          "2xl": "1400px",
+        },
+      },
       extend: {
         colors: {
           border: "hsl(var(--border))",
@@ -32,10 +42,6 @@ export default {
             DEFAULT: "hsl(var(--accent))",
             foreground: "hsl(var(--accent-foreground))",
           },
-          popover: {
-            DEFAULT: "hsl(var(--popover))",
-            foreground: "hsl(var(--popover-foreground))",
-          },
           card: {
             DEFAULT: "hsl(var(--card))",
             foreground: "hsl(var(--card-foreground))",
@@ -48,5 +54,5 @@ export default {
         },
       },
     },
-    plugins: [],
+    plugins: [require("@tailwindcss/typography")],
   }

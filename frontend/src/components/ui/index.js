@@ -17,11 +17,15 @@ export {
     CardContent 
 } from './card';
 
+export {Collapsible, CollapsibleTrigger, CollapsibleContent} from './collapsible';
+
 // Progress components
 export { Progress } from './progress';
 
 // ScrollArea components
 export { ScrollArea } from './scroll-area';
+
+
 
 // Tabs components
 export { 
