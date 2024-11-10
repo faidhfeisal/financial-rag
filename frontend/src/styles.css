@@ -43,3 +43,17 @@
     @apply border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors;
   }
 }
+
+.prose {
+    max-width: none;
+    color: inherit;
+  }
+  
+.prose p {
+margin: 0;
+line-height: 1.5;
+}
+
+.whitespace-pre-wrap {
+white-space: pre-wrap;
+}
