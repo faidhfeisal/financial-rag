@@ -9,13 +9,19 @@
       "preview": "vite preview"
     },
     "dependencies": {
-      "react": "^18.2.0",
-      "react-dom": "^18.2.0",
-      "lucide-react": "^0.263.1",
-      "clsx": "^2.0.0",
-      "tailwind-merge": "*",
-      "@radix-ui/react-collapsible" : "*",
-      "@tailwindcss/typography": "*"
+        "@radix-ui/react-alert-dialog": "*",
+        "@radix-ui/react-dropdown-menu": "*",
+        "@radix-ui/react-scroll-area": "*",
+        "@radix-ui/react-tabs": "*",
+        "@radix-ui/react-collapsible": "*",
+        "class-variance-authority": "*",
+        "clsx": "*",
+        "lucide-react": "*",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "tailwind-merge": "*",
+        "tailwindcss-animate": "*",
+        "@tailwindcss/typography": "*"
     },
     "devDependencies": {
       "@vitejs/plugin-react": "^4.1.0",

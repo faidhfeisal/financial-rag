@@ -5,6 +5,7 @@ python-dotenv
 python-multipart
 pydantic
 pydantic-settings
+python-jose[cryptography]
 azure-storage-blob
 azure-identity
 azure-keyvault-secrets

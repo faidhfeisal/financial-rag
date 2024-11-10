@@ -25,6 +25,17 @@ export { Progress } from './progress';
 // ScrollArea components
 export { ScrollArea } from './scroll-area';
 
+export { Input } from './input';
+
+export {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from './dropdown-menu';
+
 
 
 // Tabs components

@@ -1,0 +1,22 @@
+ISO 20022 Financial Messaging Standard
+Document Type: Regulation
+Version: 1.0
+
+1. Overview
+Standard for financial messaging across institutions.
+
+2. Message Types
+2.1 Payment Messages
+- pacs.008: Customer Credit Transfer
+- pacs.009: Financial Institution Transfer
+- pacs.002: Payment Status Report
+
+2.2 Securities Messages
+- setr.001: Securities Trade Instruction
+- semt.007: Securities Statement
+
+3. Implementation Guidelines
+3.1 Message Structure
+- XML Format requirements
+- Character set specifications
+- Field validations
