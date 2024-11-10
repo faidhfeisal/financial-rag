@@ -1,4 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api';
 import { 
   Send, 
   Upload, 
@@ -273,6 +275,7 @@ const RAGInterface = () => {
   const [loading, setLoading] = useState(false);
   const [documents, setDocuments] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { user, logout } = useAuth(); 
   const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -320,11 +323,7 @@ const RAGInterface = () => {
         metadata: null
       }]);
   
-      const response = await fetch('http://127.0.0.1:8000/api/v1/query/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() })
-      });
+      const response = await api.streamQuery(query.trim());
   
       if (!response.ok) throw new Error('Stream request failed');
       
@@ -426,42 +425,25 @@ const RAGInterface = () => {
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
+  
     setLoading(true);
     setError(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const metadata = {
-      title: file.name,
-      document_type: "regulation",
-      source: "upload",
-      tags: ["regulation"],
-      created_at: new Date().toISOString()
-    };
-    
-    formData.append('metadata', JSON.stringify(metadata));
-
+  
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/documents/upload', {
-        method: 'POST',
-        body: formData,
+      const result = await api.uploadDocument(file, {
+        title: file.name,
+        document_type: "regulation",
+        source: "upload",
+        tags: ["regulation"],
+        created_at: new Date().toISOString()
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Upload failed');
-      }
-
-      const data = await response.json();
       
       setMessages(prev => [...prev, {
         type: 'system',
         content: `Successfully uploaded: ${file.name}`,
-        metadata: { document: data }
+        metadata: { document: result }
       }]);
-
+  
       fetchDocuments();
     } catch (err) {
       setError(err.message || 'Failed to upload document');
@@ -474,9 +456,7 @@ const RAGInterface = () => {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/v1/documents');
-      if (!response.ok) throw new Error('Failed to fetch documents');
-      const data = await response.json();
+      const data = await api.listDocuments();
       setDocuments(data.documents);
     } catch (err) {
       setError('Failed to load documents');
@@ -485,22 +465,41 @@ const RAGInterface = () => {
 
   const handleDelete = async (documentId) => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/documents/${documentId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Delete failed');
+      await api.deleteDocument(documentId);
       fetchDocuments();
     } catch (err) {
       setError('Failed to delete document');
     }
   };
 
+  useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        await fetchDocuments();
+      } catch (error) {
+        console.error('Failed to load initial data:', error);
+      }
+    };
+  
+    loadInitialData();
+  }, []); // Only run on mount
+
   return (
     <div className="flex h-screen bg-background">
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col h-full">
         {/* Chat Messages */}
+        <div className="border-b p-4">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <h1 className="text-xl font-semibold">Financial Regulations Assistant</h1>
+            <div className="flex items-center gap-4">
+              <Badge>{user.role}</Badge>
+              <Button variant="ghost" size="sm" onClick={logout}>
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
         <ScrollArea className="flex-1 p-4">
           <div className="max-w-3xl mx-auto space-y-4">
             {messages.length === 0 && (
@@ -559,6 +558,7 @@ const RAGInterface = () => {
             )}
             
             <form onSubmit={handleSubmit} className="flex gap-4">
+            {(user.role === 'admin' || user.role === 'analyst') && (
               <Button
                 type="button"
                 variant="outline"
@@ -568,6 +568,7 @@ const RAGInterface = () => {
               >
                 <Upload className="h-4 w-4" />
               </Button>
+            )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -631,14 +632,16 @@ const RAGInterface = () => {
                           {new Date(doc.metadata.created_at).toLocaleDateString()}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(doc.document_id)}
-                        className="h-6 w-6"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      {user.role === 'admin' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(doc.document_id)}
+                          className="h-6 w-6"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

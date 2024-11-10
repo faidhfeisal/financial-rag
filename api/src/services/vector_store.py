@@ -16,8 +16,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
-
 class VectorStore:
     def __init__(self):
         self.settings = get_settings()
@@ -105,49 +103,74 @@ class VectorStore:
             return True
             
         except Exception as e:
-            error_msg = f"Error storing embeddings: {str(e)}"
-            if hasattr(e, 'response'):
-                error_msg += f"\nRaw response content:\n{e.response.content}"
-            logger.error(error_msg)
-            raise Exception(error_msg)
+            logger.error(f"Error storing embeddings: {str(e)}")
+            raise
 
     async def search_similar(
         self,
         query_embedding: List[float],
-        filter_criteria: Dict[str, Any] = None
+        filter_criteria: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """Search for similar documents"""
         try:
-            filter_conditions = None
+            # Convert filter_criteria to Qdrant Filter format
+            search_filter = None
             if filter_criteria:
                 conditions = []
                 for key, value in filter_criteria.items():
-                    conditions.append(
-                        FieldCondition(
-                            key=f"metadata.{key}",
-                            match=Match(value=value)
+                    if key == "user_id":  # Skip user_id from filters if present
+                        continue
+                        
+                    field_path = f"metadata.{key}"
+                    if isinstance(value, list):
+                        conditions.append(
+                            FieldCondition(
+                                key=field_path,
+                                match=Match(any=value)
+                            )
                         )
-                    )
-                filter_conditions = Filter(must=conditions)
+                    elif isinstance(value, (int, float)):
+                        conditions.append(
+                            FieldCondition(
+                                key=field_path,
+                                match=Match(value=str(value))  # Convert numbers to strings
+                            )
+                        )
+                    else:
+                        conditions.append(
+                            FieldCondition(
+                                key=field_path,
+                                match=Match(value=value)
+                            )
+                        )
+                
+                if conditions:
+                    search_filter = Filter(must=conditions)
 
+            # Perform the search
             results = self.client.search(
                 collection_name=self.settings.COLLECTION_NAME,
                 query_vector=query_embedding,
-                query_filter=filter_conditions,
-                limit=self.settings.MAX_DOCUMENTS,
-                score_threshold=self.settings.SIMILARITY_THRESHOLD
+                query_filter=search_filter,
+                limit=self.settings.MAX_DOCUMENTS if hasattr(self.settings, 'MAX_DOCUMENTS') else 10,
+                score_threshold=self.settings.SIMILARITY_THRESHOLD if hasattr(self.settings, 'SIMILARITY_THRESHOLD') else 0.7
             )
 
-            return [{
-                "content": result.payload["content"],
-                "metadata": result.payload["metadata"],
-                "similarity": result.score
-            } for result in results]
-            
+            # Transform results into the expected format
+            formatted_results = []
+            for result in results:
+                formatted_result = {
+                    "content": result.payload.get("content", ""),
+                    "metadata": result.payload.get("metadata", {}),
+                    "similarity": float(result.score)  # Ensure score is float
+                }
+                formatted_results.append(formatted_result)
+
+            return formatted_results
+
         except Exception as e:
             logger.error(f"Error searching vectors: {str(e)}")
-            raise Exception(f"Error searching vectors: {str(e)}")
-
+            raise
 
     async def list_documents(
         self,
@@ -196,8 +219,7 @@ class VectorStore:
                     documents[doc_id] = {
                         "document_id": doc_id,
                         "metadata": point.payload["metadata"],
-                        "chunk_count": 1,
-                        "last_updated": point.payload["metadata"].get("embedding_timestamp")
+                        "chunk_count": 1
                     }
                 else:
                     documents[doc_id]["chunk_count"] += 1
@@ -211,7 +233,7 @@ class VectorStore:
 
         except Exception as e:
             logger.error(f"Error listing documents: {str(e)}")
-            raise Exception(f"Error listing documents: {str(e)}")
+            raise
 
     async def delete_document(self, document_id: str) -> bool:
         """Delete all chunks for a specific document"""
@@ -221,9 +243,7 @@ class VectorStore:
                 must=[
                     FieldCondition(
                         key="document_id",
-                        match=Match(
-                            value=document_id
-                        )
+                        match=Match(value=document_id)
                     )
                 ]
             )
@@ -237,7 +257,8 @@ class VectorStore:
             return True
             
         except Exception as e:
-            raise Exception(f"Error deleting document: {str(e)}")
+            logger.error(f"Error deleting document: {str(e)}")
+            raise
 
     async def get_document_metadata(
         self, 
@@ -268,4 +289,4 @@ class VectorStore:
             
         except Exception as e:
             logger.error(f"Error getting document metadata: {str(e)}")
-            raise Exception(f"Error getting document metadata: {str(e)}")
+            raise

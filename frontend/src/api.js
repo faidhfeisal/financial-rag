@@ -1,10 +1,21 @@
 const BASE_URL = 'http://127.0.0.1:8000/api/v1';
 
+async function getAuthHeaders() {
+  const token = localStorage.getItem('token');
+  if (!token) throw new Error('Not authenticated');
+  
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+}
+
 export const api = {
   async query(text) {
+    const headers = await getAuthHeaders();
     const response = await fetch(`${BASE_URL}/query`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ query: text })
     });
     
@@ -12,22 +23,29 @@ export const api = {
     return response.json();
   },
 
-  async submitFeedback(feedback) {
-    const response = await fetch(`${BASE_URL}/evaluation/feedback`, {
+  async streamQuery(text) {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/query/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(feedback)
+      headers,
+      body: JSON.stringify({ query: text })
     });
     
-    if (!response.ok) throw new Error('Feedback submission failed');
-  }
+    if (!response.ok) throw new Error('Query stream failed');
+    return response;
+  },
+
   async uploadDocument(file, metadata) {
+    const headers = await getAuthHeaders();
+    delete headers['Content-Type']; // Let browser set for FormData
+    
     const formData = new FormData();
     formData.append('file', file);
     formData.append('metadata', JSON.stringify(metadata));
 
-    const response = await fetch('/api/v1/documents/upload', {
+    const response = await fetch(`${BASE_URL}/documents/upload`, {
       method: 'POST',
+      headers,
       body: formData,
     });
 
@@ -36,15 +54,22 @@ export const api = {
   },
 
   async listDocuments() {
-    const response = await fetch('/api/v1/documents');
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/documents`, {
+      headers
+    });
+
     if (!response.ok) throw new Error('Failed to fetch documents');
     return response.json();
   },
 
   async deleteDocument(documentId) {
-    const response = await fetch(`/api/v1/documents/${documentId}`, {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/documents/${documentId}`, {
       method: 'DELETE',
+      headers
     });
+
     if (!response.ok) throw new Error('Delete failed');
     return response.json();
   }
