@@ -1,0 +1,75 @@
+.
+├── README.md
+├── api
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── src
+│       ├── api
+│       │   ├── __init__.py
+│       │   ├── main.py
+│       │   └── routes
+│       │       ├── __init__.py
+│       │       ├── auth.py
+│       │       ├── documents.py
+│       │       ├── evaluation.py
+│       │       └── query.py
+│       ├── core
+│       │   ├── __init__.py
+│       │   ├── config.py
+│       │   ├── rag.py
+│       │   └── security.py
+│       ├── services
+│       │   ├── __init__.py
+│       │   ├── azure_client.py
+│       │   ├── embeddings.py
+│       │   ├── evaluation.py
+│       │   └── vector_store.py
+│       └── utils
+│           ├── __init__.py
+│           ├── helpers.py
+│           └── text_processing.py
+├── data
+│   ├── docs
+│   ├── redis
+│   └── vectors
+├── docker-compose.yml
+├── frontend
+│   ├── Dockerfile
+│   ├── index.html
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── src
+│   │   ├── App.jsx
+│   │   ├── api.js
+│   │   ├── components
+│   │   │   ├── DocumentManager.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   ├── RAGInterface.jsx
+│   │   │   └── ui
+│   │   │       ├── alert.jsx
+│   │   │       ├── badge.jsx
+│   │   │       ├── button.jsx
+│   │   │       ├── card.jsx
+│   │   │       ├── collapsible.jsx
+│   │   │       ├── dropdown-menu.jsx
+│   │   │       ├── index.js
+│   │   │       ├── input.jsx
+│   │   │       ├── progress.jsx
+│   │   │       ├── scroll-area.jsx
+│   │   │       └── tabs.jsx
+│   │   ├── contexts
+│   │   │   └── AuthContext.jsx
+│   │   ├── index.jsx
+│   │   ├── lib
+│   │   │   └── utils.js
+│   │   └── styles.css
+│   ├── tailwind.config.js
+│   └── vite.config.js
+├── test_documents
+│   ├── ISO20022_Financial_Messaging.txt
+│   └── ISO27001_Security_Guidelines.txt
+├── tests
+│   ├── conftest.py
+│   ├── test_queries.py
+│   └── test_rag_system.py
