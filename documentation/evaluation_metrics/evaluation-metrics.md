@@ -245,9 +245,3 @@ class MetricsAlert:
                 ))
         return alerts
 ```
-
-Would you like me to:
-1. Detail any specific metric calculation?
-2. Provide more implementation examples?
-3. Show integration points with other system components?
-4. Move on to the User Experience deliverable?
