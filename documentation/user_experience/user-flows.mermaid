@@ -1,0 +1,21 @@
+flowchart TB
+    Start[User Starts] --> Login[Login Screen]
+    Login --> Auth{Authenticated?}
+    Auth -->|No| Login
+    Auth -->|Yes| Main[Main Interface]
+    
+    Main --> Query[Ask Question]
+    Main --> Upload[Upload Document]
+    Main --> Browse[Browse Documents]
+    
+    Query --> Stream[Stream Response]
+    Stream --> Feedback[View Sources & Metrics]
+    Feedback --> Rate[Rate Response]
+    
+    Upload --> Process[Process Document]
+    Process --> Index[Index Content]
+    Index --> Confirm[Show Confirmation]
+    
+    Browse --> View[View Document]
+    Browse --> Delete[Delete Document]
+    Browse --> Search[Search Content]
