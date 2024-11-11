@@ -27,12 +27,21 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6333
     COLLECTION_NAME: str = "financial_docs"
 
-      # Vector Search Settings
+    # Vector Search Settings
     MAX_DOCUMENTS: int = 10
     SIMILARITY_THRESHOLD: float = 0.7
-    CHUNK_SIZE: int = 1000
-    CHUNK_OVERLAP: int = 200
     VECTOR_SIZE: int = 1536  # Size for text-embedding-ada-002
+    # Chunking settings
+    CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 100
+    MIN_CHUNK_SIZE: int = 50
+    MAX_CHUNK_SIZE: int = 1000
+    MAX_CHUNK_OVERLAP: int = 100
+    MEMORY_LIMIT_MB: int = 500  # Adjust based on your container limits
+    
+    # Whether to allow empty chunks
+    ALLOW_EMPTY_CHUNKS: bool = False
+    
     
     # API Settings
     API_HOST: str = "0.0.0.0"

@@ -23,3 +23,5 @@ pytest-asyncio
 black
 flake8
 aiohttp
+psutil
+memory_profiler

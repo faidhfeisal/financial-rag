@@ -1,10 +1,21 @@
-from typing import Dict, Any, List, AsyncGenerator, Optional
+from typing import Dict, Any, List, AsyncGenerator, Optional,  Generator
 from datetime import datetime
 import logging
+from contextlib import contextmanager
+import gc
+import psutil
+import traceback
 from .config import get_settings
 from ..services.azure_client import AzureClient
 from ..services.vector_store import VectorStore
 from ..services.evaluation import ResponseEvaluation
+from ..utils.exceptions import (
+    DocumentProcessingError,
+    EmbeddingGenerationError,
+    VectorStoreError,
+    StorageError
+)
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -169,25 +180,35 @@ class RAGSystem:
         metadata: Dict[str, Any],
         **kwargs
     ) -> Dict[str, Any]:
-        """Ingest a document into the RAG system"""
+        """Ingest a document with robust error handling"""
         try:
+            # Step 1: Store document
             logger.info(f"Starting document ingestion: {metadata.get('title', 'Untitled')}")
-            
-            # Store document in Blob Storage
             doc_url = await self.azure_client.store_document(
                 content.encode('utf-8'),
                 f"{metadata['document_id']}.txt",
                 metadata
             )
-            
-            # Split into chunks
-            chunks = self._chunk_text(content)
-            logger.info(f"Created {len(chunks)} chunks from document")
-            
-            # Generate embeddings for chunks
+            logger.info("Document stored successfully")
+
+            # Step 2: Create chunks with defensive handling
+            logger.info("Starting text chunking")
+            try:
+                chunks = self._chunk_text(content)
+                if not chunks:
+                    raise ValueError("No chunks created")
+                logger.info(f"Successfully created {len(chunks)} chunks")
+            except Exception as chunk_error:
+                logger.error(f"Chunking failed: {str(chunk_error)}")
+                # Fallback to single chunk
+                chunks = [content.strip()]
+                logger.info("Falling back to single chunk")
+
+            # Step 3: Process chunks with individual error handling
             chunk_embeddings = []
             for i, chunk in enumerate(chunks):
                 try:
+                    logger.info(f"Processing chunk {i+1}/{len(chunks)}")
                     embedding = await self.azure_client.generate_embedding(chunk)
                     chunk_embeddings.append({
                         "content": chunk,
@@ -198,30 +219,62 @@ class RAGSystem:
                             "chunk_total": len(chunks)
                         }
                     })
-                except Exception as e:
-                    logger.error(f"Error generating embedding for chunk {i}: {str(e)}")
+                    logger.info(f"Successfully processed chunk {i+1}")
+                except Exception as embed_error:
+                    logger.error(f"Error processing chunk {i+1}: {str(embed_error)}")
                     continue
-            
+
             if not chunk_embeddings:
-                raise Exception("Failed to generate any valid embeddings")
-            
-            # Store in vector database
-            logger.info("Storing embeddings in vector database")
+                raise ValueError("No embeddings were successfully generated")
+
+            # Step 4: Store embeddings
+            logger.info("Storing embeddings in vector store")
             await self.vector_store.store_embeddings(
                 chunk_embeddings,
                 metadata
             )
-            
+            logger.info("Embeddings stored successfully")
+
             return {
                 "document_id": metadata["document_id"],
                 "url": doc_url,
                 "chunk_count": len(chunks),
+                "embedding_count": len(chunk_embeddings),
                 "status": "success"
             }
 
         except Exception as e:
-            logger.error(f"Error ingesting document: {str(e)}")
+            logger.error(f"Document ingestion failed: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
+
+    async def _cleanup_failed_ingestion(
+        self,
+        status: Dict[str, Any],
+        metadata: Dict[str, Any]
+    ) -> None:
+        """Cleanup any partial uploads in case of failure"""
+        try:
+            # Only cleanup if document was stored
+            if "document_storage" in status["steps_completed"]:
+                logger.info(f"Cleaning up stored document: {metadata['document_id']}")
+                await self.azure_client.delete_document(metadata["document_id"])
+
+            # Cleanup vector store if embeddings were partially stored
+            if "vector_storage" in status["steps_completed"]:
+                logger.info(f"Cleaning up vector store entries: {metadata['document_id']}")
+                await self.vector_store.delete_document(metadata["document_id"])
+                
+        except Exception as cleanup_error:
+            logger.error(f"Cleanup failed: {str(cleanup_error)}")
+
+    async def get_ingestion_status(
+        self,
+        process_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get the status of a document ingestion process"""
+        # Implementation depends on where you store the status
+        pass
 
     async def list_documents(
         self,
@@ -273,46 +326,141 @@ class RAGSystem:
         document_id: str,
         **kwargs
     ) -> Dict[str, Any]:
-        """Delete a document"""
+        """Delete a document and all its associated data"""
+        logger.info(f"Starting deletion of document: {document_id}")
+        
+        errors = []
+        status = {
+            "blob_storage": False,
+            "vector_store": False
+        }
+
+        # 1. Delete from blob storage
         try:
-            # Delete from vector store
-            await self.vector_store.delete_document(document_id)
-            
-            # Delete from blob storage
             container_client = self.azure_client.blob_service.get_container_client(
                 self.settings.DOCUMENTS_CONTAINER_NAME
             )
             blob_client = container_client.get_blob_client(f"{document_id}.txt")
-            blob_client.delete_blob()
-            
+            await blob_client.delete_blob()
+            status["blob_storage"] = True
+            logger.info(f"Deleted document from blob storage: {document_id}")
+        except Exception as e:
+            errors.append(f"Blob storage deletion failed: {str(e)}")
+            logger.error(f"Failed to delete from blob storage: {str(e)}")
+
+        # 2. Delete from vector store
+        try:
+            await self.vector_store.delete_document(document_id)
+            status["vector_store"] = True
+            logger.info(f"Deleted document from vector store: {document_id}")
+        except Exception as e:
+            errors.append(f"Vector store deletion failed: {str(e)}")
+            logger.error(f"Failed to delete from vector store: {str(e)}")
+
+        # 3. Delete any cached embeddings
+        try:
+            await self.embeddings_service.clear_document_cache(document_id)
+            logger.info(f"Cleared embeddings cache for document: {document_id}")
+        except Exception as e:
+            logger.warning(f"Failed to clear embeddings cache: {str(e)}")
+            # Non-critical error, don't add to errors list
+
+        # Check if all deletions were successful
+        if all(status.values()):
             return {
                 "status": "success",
-                "document_id": document_id
+                "document_id": document_id,
+                "details": status
             }
+        else:
+            raise Exception(f"Deletion partially failed: {'; '.join(errors)}")
 
-        except Exception as e:
-            logger.error(f"Error deleting document: {str(e)}")
-            raise
+    @contextmanager
+    def _monitor_resources(self, operation: str):
+        """Monitor resource usage during operations"""
+        process = psutil.Process(os.getpid())
+        start_memory = process.memory_info().rss / 1024 / 1024  # MB
+        
+        try:
+            logger.info(f"Starting {operation}. Current memory usage: {start_memory:.2f}MB")
+            yield
+        finally:
+            current_memory = process.memory_info().rss / 1024 / 1024
+            logger.info(
+                f"Completed {operation}. "
+                f"Memory usage: {current_memory:.2f}MB "
+                f"(Delta: {(current_memory - start_memory):.2f}MB)"
+            )
 
     def _chunk_text(self, text: str) -> List[str]:
-        """Split text into chunks with overlap"""
-        chunks = []
+        """Simple and robust text chunking"""
+        try:
+            logger.info(f"Starting simple chunking for text of length {len(text)}")
+            
+            # For small documents (< 1000 chars), just create a single chunk
+            if len(text) < 1000:
+                logger.info("Document is small, creating single chunk")
+                return [text.strip()]
+            
+            # For larger documents, split by paragraphs first
+            paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+            logger.info(f"Split into {len(paragraphs)} paragraphs")
+            
+            chunks = []
+            current_chunk = ""
+            
+            for para in paragraphs:
+                if len(current_chunk) + len(para) < 1000:
+                    current_chunk += para + "\n\n"
+                else:
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                    current_chunk = para + "\n\n"
+            
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            
+            logger.info(f"Created {len(chunks)} chunks successfully")
+            return chunks
+
+        except Exception as e:
+            logger.error(f"Chunking failed with error: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # For very small documents, return as single chunk as fallback
+            if len(text) < 1000:
+                logger.info("Fallback: returning entire text as single chunk")
+                return [text.strip()]
+            raise
+
+    def _chunk_generator(self, text: str) -> Generator[str, None, None]:
+        """Generate chunks one at a time to minimize memory usage"""
         length = len(text)
         start = 0
-        
+        chunk_size = min(self.settings.CHUNK_SIZE, 1000)  # Limit chunk size
+        chunk_overlap = min(self.settings.CHUNK_OVERLAP, 100)  # Limit overlap
+
         while start < length:
-            end = start + self.settings.CHUNK_SIZE
+            # Calculate end position
+            end = min(start + chunk_size, length)
             
+            # Find natural break point if not at the end
             if end < length:
-                # Find a natural break point
-                while end > start and not text[end].isspace():
-                    end -= 1
-                if end == start:
-                    end = start + self.settings.CHUNK_SIZE
-            else:
-                end = length
-            
-            chunks.append(text[start:end].strip())
-            start = end - self.settings.CHUNK_OVERLAP
-            
-        return chunks
+                for char in ['.', '!', '?', '\n', ' ']:
+                    pos = text.rfind(char, start, end)
+                    if pos != -1:
+                        end = pos + 1
+                        break
+
+            # Extract chunk
+            chunk = text[start:end].strip()
+            if chunk:  # Only yield non-empty chunks
+                yield chunk
+
+            # Move start position
+            start = end - chunk_overlap
+            if start >= end:
+                break
+
+            # Force garbage collection after each chunk
+            if start % (chunk_size * 10) == 0:
+                gc.collect()

@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from .routes import documents, query, auth
 from ..core.config import get_settings
 import logging
+import psutil
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +42,22 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Request: {request.method} {request.url}")
     response = await call_next(request)
     logger.info(f"Response: {response.status_code}")
+    return response
+
+@app.middleware("http")
+async def monitor_memory(request: Request, call_next):
+    process = psutil.Process(os.getpid())
+    start_memory = process.memory_info().rss / 1024 / 1024
+    
+    response = await call_next(request)
+    
+    current_memory = process.memory_info().rss / 1024 / 1024
+    logger.info(
+        f"Request to {request.url.path} completed. "
+        f"Memory usage: {current_memory:.2f}MB "
+        f"(Delta: {(current_memory - start_memory):.2f}MB)"
+    )
+    
     return response
 
 # Include routers
