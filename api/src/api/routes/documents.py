@@ -119,22 +119,32 @@ async def list_documents(
             detail=str(e)
         )
 
-@router.delete(
-    "/{document_id}",
-    dependencies=[Depends(requires_auth([Permission.DELETE_DOCUMENTS]))]
-)
+@router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
     rag_system: RAGSystem = Depends(get_rag_system),
-    user=Depends(requires_auth())
+    user=Depends(requires_auth([Permission.DELETE_DOCUMENTS]))
 ):
-    """Delete a document"""
+    """Delete a document and all associated data"""
     try:
+        # Delete from both blob storage and vector store
         result = await rag_system.delete_document(
             document_id,
             user_context=user
         )
-        return result
+        
+        if result["status"] == "success":
+            return {
+                "status": "success",
+                "message": "Document and associated data deleted successfully",
+                "document_id": document_id
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete document completely"
+            )
+            
     except Exception as e:
         logger.error(f"Error deleting document: {str(e)}")
         raise HTTPException(

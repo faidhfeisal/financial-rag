@@ -235,30 +235,36 @@ class VectorStore:
             logger.error(f"Error listing documents: {str(e)}")
             raise
 
+    
     async def delete_document(self, document_id: str) -> bool:
-        """Delete all chunks for a specific document"""
-        try:
-            # Create filter for the document ID
-            filter_conditions = Filter(
-                must=[
-                    FieldCondition(
-                        key="document_id",
-                        match=Match(value=document_id)
-                    )
-                ]
-            )
-            
-            # Delete all points for this document
-            self.client.delete(
-                collection_name=self.settings.COLLECTION_NAME,
-                points_selector=filter_conditions
-            )
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error deleting document: {str(e)}")
-            raise
+            """Delete all vectors associated with a document"""
+            try:
+                # Create filter for the document ID
+                filter_conditions = Filter(
+                    must=[
+                        FieldCondition(
+                            key="metadata.document_id",
+                            match=Match(value=document_id)
+                        )
+                    ]
+                )
+                
+                # Delete all points for this document
+                result = await self.client.delete(
+                    collection_name=self.settings.COLLECTION_NAME,
+                    points_selector=filter_conditions
+                )
+                
+                if result:
+                    logger.info(f"Successfully deleted vectors for document: {document_id}")
+                    return True
+                else:
+                    logger.error(f"Failed to delete vectors for document: {document_id}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Error deleting document vectors: {str(e)}")
+                raise
 
     async def get_document_metadata(
         self, 

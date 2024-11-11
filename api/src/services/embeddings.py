@@ -6,6 +6,14 @@ import json
 from tenacity import retry, stop_after_attempt, wait_exponential
 import redis
 from ..core.config import get_settings
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class EmbeddingsService:
     def __init__(self):
@@ -182,3 +190,15 @@ class EmbeddingsService:
             }
             for idx in top_indices
         ]
+    
+    async def clear_document_cache(self, document_id: str) -> None:
+        """Clear cached embeddings for a specific document"""
+        try:
+            pattern = f"emb:doc:{document_id}:*"
+            keys = self.cache.keys(pattern)
+            if keys:
+                self.cache.delete(*keys)
+                logger.info(f"Cleared {len(keys)} cached embeddings for document {document_id}")
+        except Exception as e:
+            logger.error(f"Failed to clear embeddings cache: {str(e)}")
+            raise

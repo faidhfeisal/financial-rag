@@ -465,10 +465,28 @@ const RAGInterface = () => {
 
   const handleDelete = async (documentId) => {
     try {
-      await api.deleteDocument(documentId);
-      fetchDocuments();
+        setLoading(true);
+        setError(null);
+
+        const response = await api.deleteDocument(documentId);
+        
+        if (response.status === "success") {
+            // Remove document from local state
+            setDocuments(prev => prev.filter(doc => doc.document_id !== documentId));
+            
+            // Show success message
+            setMessages(prev => [...prev, {
+                type: 'system',
+                content: `Successfully deleted document: ${documentId}`,
+            }]);
+        } else {
+            throw new Error("Failed to delete document");
+        }
     } catch (err) {
-      setError('Failed to delete document');
+        setError(`Failed to delete document: ${err.message}`);
+        console.error('Delete error:', err);
+    } finally {
+        setLoading(false);
     }
   };
 

@@ -66,11 +66,15 @@ export const api = {
   async deleteDocument(documentId) {
     const headers = await getAuthHeaders();
     const response = await fetch(`${BASE_URL}/documents/${documentId}`, {
-      method: 'DELETE',
-      headers
+        method: 'DELETE',
+        headers
     });
+    
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Delete failed');
+    }
 
-    if (!response.ok) throw new Error('Delete failed');
     return response.json();
-  }
+}
 };
